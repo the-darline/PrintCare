@@ -1,0 +1,6 @@
+{
+  "name": "PrintCare",
+  "description": "Système complet de gestion de parc d'imprimantes pour Administrateurs et Techniciens avec génération de QR code et workflow de validation.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
