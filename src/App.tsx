@@ -86,20 +86,27 @@ export default function App() {
           setChangeRequests(pReqs);
           setInterventionLogs(pLogs);
           loadedTechs = pTechs;
+
+          // Warm local storage cache with production data
+          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(pPrinters));
+          localStorage.setItem(STORAGE_KEYS.TECHNICIANS, JSON.stringify(pTechs));
+          localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(pNotes));
+          localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(pReqs));
+          localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(pLogs));
           
           // Securely load only the local fallback passwords to keep offline functionality
-          await loadLocalData();
+          await loadLocalData(true);
           setDbMode('supabase');
         } catch (err: any) {
           console.warn("Failed to load data from Supabase tables (falling back to offline LocalStorage mode):", err);
           // Set the error message (usually because tables aren't created yet)
           setSyncError(err.message || String(err));
           setDbMode('local');
-          loadedTechs = await loadLocalData();
+          loadedTechs = await loadLocalData(false);
         }
       } else {
         setDbMode('local');
-        loadedTechs = await loadLocalData();
+        loadedTechs = await loadLocalData(false);
       }
 
       // Recover active user session and perform dynamic authorization check
@@ -136,49 +143,59 @@ export default function App() {
       setIsLoading(false);
     }
 
-    async function loadLocalData(): Promise<Technician[]> {
+    async function loadLocalData(onlyPasswords = false): Promise<Technician[]> {
       // 1. Printers
-      const savedPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
-      if (savedPrinters) {
-        setPrinters(JSON.parse(savedPrinters));
-      } else {
-        setPrinters(INITIAL_PRINTERS);
-        localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(INITIAL_PRINTERS));
+      if (!onlyPasswords) {
+        const savedPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
+        if (savedPrinters) {
+          setPrinters(JSON.parse(savedPrinters));
+        } else {
+          setPrinters(INITIAL_PRINTERS);
+          localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(INITIAL_PRINTERS));
+        }
       }
 
       // 2. Technicians
       const savedTechs = localStorage.getItem(STORAGE_KEYS.TECHNICIANS);
       const techsList = savedTechs ? JSON.parse(savedTechs) : INITIAL_TECHNICIANS;
-      setTechnicians(techsList);
+      if (!onlyPasswords) {
+        setTechnicians(techsList);
+      }
       if (!savedTechs) {
         localStorage.setItem(STORAGE_KEYS.TECHNICIANS, JSON.stringify(INITIAL_TECHNICIANS));
       }
 
       // 3. Notes
-      const savedNotes = localStorage.getItem(STORAGE_KEYS.NOTES);
-      if (savedNotes) {
-        setNotes(JSON.parse(savedNotes));
-      } else {
-        setNotes(INITIAL_NOTES);
-        localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(INITIAL_NOTES));
+      if (!onlyPasswords) {
+        const savedNotes = localStorage.getItem(STORAGE_KEYS.NOTES);
+        if (savedNotes) {
+          setNotes(JSON.parse(savedNotes));
+        } else {
+          setNotes(INITIAL_NOTES);
+          localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(INITIAL_NOTES));
+        }
       }
 
       // 4. Change Requests
-      const savedRequests = localStorage.getItem(STORAGE_KEYS.REQUESTS);
-      if (savedRequests) {
-        setChangeRequests(JSON.parse(savedRequests));
-      } else {
-        setChangeRequests(INITIAL_CHANGE_REQUESTS);
-        localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(INITIAL_CHANGE_REQUESTS));
+      if (!onlyPasswords) {
+        const savedRequests = localStorage.getItem(STORAGE_KEYS.REQUESTS);
+        if (savedRequests) {
+          setChangeRequests(JSON.parse(savedRequests));
+        } else {
+          setChangeRequests(INITIAL_CHANGE_REQUESTS);
+          localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(INITIAL_CHANGE_REQUESTS));
+        }
       }
 
       // 5. Intervention Logs
-      const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
-      if (savedLogs) {
-        setInterventionLogs(JSON.parse(savedLogs));
-      } else {
-        setInterventionLogs(INITIAL_INTERVENTION_LOGS);
-        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(INITIAL_INTERVENTION_LOGS));
+      if (!onlyPasswords) {
+        const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
+        if (savedLogs) {
+          setInterventionLogs(JSON.parse(savedLogs));
+        } else {
+          setInterventionLogs(INITIAL_INTERVENTION_LOGS);
+          localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(INITIAL_INTERVENTION_LOGS));
+        }
       }
 
       // 6. Passwords - Transparent Cryptographic Upgrade to SHA-256
@@ -353,7 +370,17 @@ export default function App() {
 
   // Add Technician (Admin)
   const handleAddTechnician = async (techData: Omit<Technician, 'id' | 'created_at'>) => {
-    const newId = `TECH-${100 + technicians.length + 1}`;
+    let maxNum = 100;
+    technicians.forEach(t => {
+      const match = t.id.match(/^TECH-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const uniqueSuffix = Math.floor(10 + Math.random() * 90);
+    const newId = `TECH-${maxNum + 1}-${uniqueSuffix}`;
+
     const newTech: Technician = {
       ...techData,
       id: newId,
@@ -390,7 +417,17 @@ export default function App() {
   // Submit Technical Note (Technician)
   const handleSubmitNote = async (printerId: string, content: string) => {
     if (!activeUser) return;
-    const newId = `NOTE-${100 + notes.length + 1}`;
+    let maxNum = 100;
+    notes.forEach(n => {
+      const match = n.id.match(/^NOTE-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const uniqueSuffix = Math.floor(10 + Math.random() * 90);
+    const newId = `NOTE-${maxNum + 1}-${uniqueSuffix}`;
+
     const newNote: Note = {
       id: newId,
       printer_id: printerId,
@@ -415,7 +452,17 @@ export default function App() {
   // Submit ChangeRequest (Technician)
   const handleSubmitChangeRequest = async (reqData: Omit<ChangeRequest, 'id' | 'technician_id' | 'technician_name' | 'created_at' | 'status'>) => {
     if (!activeUser) return;
-    const newId = `REQ-${100 + changeRequests.length + 1}`;
+    let maxNum = 100;
+    changeRequests.forEach(r => {
+      const match = r.id.match(/^REQ-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const uniqueSuffix = Math.floor(10 + Math.random() * 90);
+    const newId = `REQ-${maxNum + 1}-${uniqueSuffix}`;
+
     const newReq: ChangeRequest = {
       ...reqData,
       id: newId,
@@ -440,7 +487,17 @@ export default function App() {
   // Submit Intervention Checklist Log (Technician)
   const handleSubmitInterventionLog = async (logData: Omit<InterventionLog, 'id' | 'technician_id' | 'technician_name' | 'date'>) => {
     if (!activeUser) return;
-    const newId = `LOG-${100 + interventionLogs.length + 1}`;
+    let maxNum = 100;
+    interventionLogs.forEach(l => {
+      const match = l.id.match(/^LOG-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const uniqueSuffix = Math.floor(10 + Math.random() * 90);
+    const newId = `LOG-${maxNum + 1}-${uniqueSuffix}`;
+
     const newLog: InterventionLog = {
       ...logData,
       id: newId,

@@ -214,7 +214,16 @@ export default function AdminDashboard({
     if (!newPrinterName || !newPrinterDept || !newPrinterBrand) return;
 
     // Generate custom unique ID
-    const newId = `PRN-${100 + printers.length + 1}`;
+    let maxNum = 100;
+    printers.forEach(p => {
+      const match = p.id.match(/^PRN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    const uniqueSuffix = Math.floor(10 + Math.random() * 90);
+    const newId = `PRN-${maxNum + 1}-${uniqueSuffix}`;
 
     onAddPrinter({
       id: newId,
