@@ -115,6 +115,7 @@ export default function AdminDashboard({
   const [newTechName, setNewTechName] = useState('');
   const [newTechCode, setNewTechCode] = useState('');
   const [newTechEmail, setNewTechEmail] = useState('');
+  const [techError, setTechError] = useState<string | null>(null);
 
   // Selected printer for QR expansion / detailed view
   const [selectedPrinterQR, setSelectedPrinterQR] = useState<PrinterType | null>(null);
@@ -260,9 +261,17 @@ export default function AdminDashboard({
     e.preventDefault();
     if (!newTechName || !newTechCode) return;
 
+    const codeUpper = newTechCode.trim().toUpperCase();
+    const isDuplicateCode = technicians.some(t => t.code === codeUpper);
+    if (isDuplicateCode) {
+      setTechError(`Le code technicien "${codeUpper}" est déjà utilisé par un autre technicien.`);
+      return;
+    }
+
+    setTechError(null);
     onAddTechnician({
       name: newTechName,
-      code: newTechCode.trim().toUpperCase(),
+      code: codeUpper,
       email: newTechEmail || undefined
     });
 
@@ -1426,7 +1435,7 @@ export default function AdminDashboard({
                   Enregistrer un technicien
                 </h3>
                 <button
-                  onClick={() => setShowAddTechModal(false)}
+                  onClick={() => { setShowAddTechModal(false); setTechError(null); }}
                   className="text-slate-400 hover:text-slate-800 font-bold text-sm cursor-pointer"
                 >
                   Fermer
@@ -1434,6 +1443,12 @@ export default function AdminDashboard({
               </div>
 
               <form onSubmit={handleCreateTechSubmit} className="p-6 space-y-4">
+                {techError && (
+                  <div className="bg-rose-50 border border-rose-150 p-3 rounded-xl text-xs text-rose-800 font-semibold" id="tech-error-message">
+                    ⚠️ {techError}
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nom complet</label>
                   <input
@@ -1476,7 +1491,7 @@ export default function AdminDashboard({
                 <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="button"
-                    onClick={() => setShowAddTechModal(false)}
+                    onClick={() => { setShowAddTechModal(false); setTechError(null); }}
                     className="px-4 py-2 bg-white border border-slate-200 text-slate-500 font-bold text-xs rounded-lg hover:text-slate-850 hover:bg-slate-50 cursor-pointer"
                   >
                     Annuler
