@@ -274,6 +274,17 @@ export default function App() {
   const handleCheckPasswordSetup = async (email: string): Promise<boolean> => {
     const cleanedEmail = email.trim().toLowerCase();
     
+    // For recognized admins, they have a predefined password, so they are always setup!
+    const isRecognized =
+      cleanedEmail === 'sullypatrick01@gmail.com' ||
+      cleanedEmail === 'pierrerobertoleblanc1@gmail.com' ||
+      cleanedEmail === 'pierrerobertoleblanc10@gmail.com' ||
+      cleanedEmail === 'darlinelegrand8@gmail.com';
+      
+    if (isRecognized) {
+      return true;
+    }
+
     // In Supabase mode, check the database first
     if (dbMode === 'supabase') {
       try {
@@ -296,6 +307,44 @@ export default function App() {
     const cleanedEmail = email.trim().toLowerCase();
     const enteredHash = await hashPassword(pass);
     
+    const isRecognized =
+      cleanedEmail === 'sullypatrick01@gmail.com' ||
+      cleanedEmail === 'pierrerobertoleblanc1@gmail.com' ||
+      cleanedEmail === 'pierrerobertoleblanc10@gmail.com' ||
+      cleanedEmail === 'darlinelegrand8@gmail.com';
+
+    const isPredefinedPassword = enteredHash === 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e';
+
+    if (isRecognized && isPredefinedPassword) {
+      // Always allow the correct predefined password for recognized admins.
+      // Auto-repair local storage if it's outdated or missing
+      if (registeredPasswords[cleanedEmail] !== enteredHash) {
+        const updated = { ...registeredPasswords, [cleanedEmail]: enteredHash };
+        setRegisteredPasswords(updated);
+        localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(updated));
+      }
+      
+      // Auto-repair/register in Supabase
+      if (dbMode === 'supabase') {
+        try {
+          const remoteHash = await db.getAdminPassword(cleanedEmail);
+          const isSuper = cleanedEmail === 'pierrerobertoleblanc10@gmail.com' || 
+                          cleanedEmail === 'pierrerobertoleblanc1@gmail.com' ||
+                          cleanedEmail === 'darlinelegrand8@gmail.com';
+          
+          if (remoteHash === null) {
+            await db.registerAdminUser(cleanedEmail, enteredHash, isSuper ? 'super_admin' : 'admin');
+          } else if (remoteHash !== enteredHash) {
+            // Overwrite existing incorrect/outdated database password with correct hash
+            await (db as any).updateAdminPassword(cleanedEmail, enteredHash);
+          }
+        } catch (err) {
+          console.warn("Error auto-repairing admin password in Supabase:", err);
+        }
+      }
+      return true;
+    }
+
     // In Supabase mode, verify with DB
     if (dbMode === 'supabase') {
       try {

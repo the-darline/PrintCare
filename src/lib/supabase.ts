@@ -260,5 +260,14 @@ export const db = {
       role
     });
     if (error) throw error;
+  },
+
+  async updateAdminPassword(email: string, password: string): Promise<void> {
+    if (!supabase) throw new Error('Supabase is not configured');
+    const { error } = await supabase
+      .from('admin_users')
+      .update({ password })
+      .eq('email', email.trim().toLowerCase());
+    if (error) throw error;
   }
 };
