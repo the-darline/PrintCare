@@ -2,8 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { Printer, Technician, Note, ChangeRequest, InterventionLog } from '../types';
 
 // Read configuration from Vite environment variables (cast as any for tsc compilation)
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const rawUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+const rawKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+
+// Clean up possible whitespace, line breaks or quotes from copy-pasting
+export const supabaseUrl = rawUrl.replace(/['"\s]/g, '').trim();
+export const supabaseAnonKey = rawKey.replace(/['"\s]/g, '').trim();
 
 // Clean check of whether Supabase variables are set and functional
 export const isSupabaseConfigured = Boolean(

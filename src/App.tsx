@@ -61,6 +61,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [showSqlSetup, setShowSqlSetup] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedAlterSql, setCopiedAlterSql] = useState(false);
 
   // --- Initial State Loading (with Supabase sync & localStorage fallback) ---
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function App() {
               localStorage.removeItem(STORAGE_KEYS.USER);
             }
           } else if (user.role === 'technician') {
-            const exists = loadedTechs.some(t => t.code === user.technicianId);
+            const exists = loadedTechs.some(t => t.code === user.technicianId || t.id === user.technicianId);
             if (exists) {
               setActiveUser(user);
             } else {
@@ -580,6 +581,12 @@ export default function App() {
     setTimeout(() => setCopiedSql(false), 3000);
   };
 
+  const handleCopyAlterSql = () => {
+    navigator.clipboard.writeText("ALTER TABLE printers ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT '';");
+    setCopiedAlterSql(true);
+    setTimeout(() => setCopiedAlterSql(false), 3000);
+  };
+
   // Quick Switch Roles helper panel in Sandbox
   const handleSandboxRoleSwitch = (roleType: 'super' | 'admin' | 'tech') => {
     if (roleType === 'super') {
@@ -607,15 +614,44 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800" id="app-root">
       {/* --- Main Navigation Routing Frame --- */}
+      {syncError && (
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-3 flex flex-col md:flex-row md:items-center justify-between text-xs font-medium text-rose-900" id="sync-error-banner">
+          <div className="flex items-start md:items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full mt-1.5 md:mt-0 shrink-0 bg-rose-500 animate-pulse" />
+            <div>
+              <span className="font-extrabold text-rose-900 block">⚠️ Mode local (hors-ligne) actif : Échec de connexion à Supabase</span>
+              <p className="text-[10.5px] text-rose-700 font-semibold mt-0.5 leading-normal max-w-4xl">
+                Erreur signalée : <code className="bg-rose-100/80 px-1 py-0.5 rounded font-mono text-[9.5px] text-rose-950 font-bold">{syncError}</code>.
+              </p>
+              <p className="text-[10px] text-rose-650 font-medium mt-1 leading-normal max-w-4xl">
+                💡 **Pourquoi cela se produit sur Vercel ?**
+                <br />
+                1. Vos variables d'environnement <code className="bg-rose-100/50 px-1 font-mono text-[9px]">VITE_SUPABASE_URL</code> ou <code className="bg-rose-100/50 px-1 font-mono text-[9px]">VITE_SUPABASE_ANON_KEY</code> ne sont pas encore configurées dans votre tableau de bord Vercel (ou n'ont pas été déployées).
+                <br />
+                2. Vos variables contiennent des espaces ou un retour à la ligne invisible. Ré-enregistrez-les proprement.
+                <br />
+                3. Votre projet Supabase est peut-être **suspendu/en pause** par inactivité. Allez sur votre tableau de bord Supabase pour le réactiver.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setSyncError(null)} 
+            className="font-bold px-2.5 py-1.5 rounded text-rose-700 hover:text-rose-900 hover:bg-rose-100/50 cursor-pointer self-end md:self-auto shrink-0 transition-all text-[11px] uppercase tracking-wider"
+          >
+            Masquer
+          </button>
+        </div>
+      )}
+
       {syncWarning && (
         <div className={`backdrop-blur-sm border-b px-4 py-3 flex flex-col md:flex-row md:items-center justify-between text-xs font-medium gap-3 ${
-          syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy')
+          syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy') || syncWarning.toLowerCase().includes('admin_notes')
             ? 'bg-amber-50/95 border-amber-200 text-amber-900'
             : 'bg-indigo-50/90 border-indigo-100 text-indigo-800'
         }`} id="sync-warning-banner">
           <div className="flex items-start md:items-center gap-2.5">
             <span className={`w-2 h-2 rounded-full mt-1.5 md:mt-0 shrink-0 ${
-              syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy')
+              syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy') || syncWarning.toLowerCase().includes('admin_notes')
                 ? 'bg-amber-500 animate-pulse'
                 : 'bg-indigo-500 animate-pulse'
             }`} />
@@ -624,6 +660,11 @@ export default function App() {
               {(syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy')) && (
                 <p className="text-[10px] text-amber-700 font-semibold mt-1 leading-normal max-w-2xl">
                   👉 **Solution immédiate :** Supabase bloque l'insertion en raison du "Row Level Security" (RLS) activé par défaut. Cliquez sur le bouton à droite pour copier le script correcteur, puis collez-le et exécutez-le ("Run") dans l'onglet **SQL Editor** de votre dashboard Supabase pour désactiver le RLS sur toutes vos tables.
+                </p>
+              )}
+              {syncWarning.toLowerCase().includes('admin_notes') && (
+                <p className="text-[10px] text-amber-700 font-semibold mt-1 leading-normal max-w-2xl">
+                  👉 **Solution immédiate :** Votre table en ligne <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono text-[9px] text-amber-900">printers</code> ne possède pas encore la colonne <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono text-[9px] text-amber-900">admin_notes</code>. Cliquez sur le bouton à droite pour copier l'instruction SQL de mise à jour, puis collez-la et exécutez-la ("Run") dans le **SQL Editor** de votre dashboard Supabase pour ajouter cette colonne instantanément sans perdre vos données !
                 </p>
               )}
             </div>
@@ -637,10 +678,18 @@ export default function App() {
                 {copiedSql ? 'Copié avec succès !' : 'Copier le script SQL'}
               </button>
             )}
+            {syncWarning.toLowerCase().includes('admin_notes') && (
+              <button
+                onClick={handleCopyAlterSql}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                {copiedAlterSql ? 'Copié ! Exécutez-le dans Supabase' : 'Copier le script SQL de mise à jour'}
+              </button>
+            )}
             <button 
               onClick={() => setSyncWarning(null)} 
               className={`font-bold px-2.5 py-1.5 rounded transition-all cursor-pointer ${
-                syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy')
+                syncWarning.toLowerCase().includes('row-level security') || syncWarning.toLowerCase().includes('rls') || syncWarning.toLowerCase().includes('policy') || syncWarning.toLowerCase().includes('admin_notes')
                   ? 'text-amber-700 hover:text-amber-900 hover:bg-amber-100/50'
                   : 'text-indigo-500 hover:text-indigo-700 hover:bg-indigo-100/50'
               }`}
