@@ -531,6 +531,22 @@ export default function TechnicianPortal({
               </div>
             </div>
 
+            {/* Admin Notes/Instructions for the technician */}
+            {selectedPrinter.admin_notes && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-xs space-y-2 text-left animate-fade-in" id="admin-consignes-banner">
+                <span className="text-xs font-black uppercase text-amber-800 tracking-wider flex items-center gap-1.5 font-sans">
+                  <FileText className="h-4 w-4 text-amber-600" />
+                  Consignes de l'Administration pour cette machine
+                </span>
+                <p className="text-xs text-slate-700 font-semibold leading-relaxed whitespace-pre-line italic">
+                  "{selectedPrinter.admin_notes}"
+                </p>
+                <p className="text-[10px] text-amber-700 font-medium font-sans">
+                  Veuillez lire et appliquer scrupuleusement ces directives lors de votre intervention.
+                </p>
+              </div>
+            )}
+
             {/* INTERVENTION SUBMISSION FORM */}
             <form onSubmit={handleFormSubmit} className="space-y-6" id="form-submit-intervention">
               {/* Box 1: Checklist items */}

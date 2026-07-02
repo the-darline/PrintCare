@@ -15,6 +15,7 @@ export interface Printer {
   status: PrinterStatus;
   last_service_date: string;
   qr_code_url: string;
+  admin_notes?: string;
 }
 
 export interface Technician {

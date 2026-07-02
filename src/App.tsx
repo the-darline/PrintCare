@@ -21,6 +21,7 @@ import LoginScreen from './components/LoginScreen';
 import AdminDashboard from './components/AdminDashboard';
 import TechnicianPortal from './components/TechnicianPortal';
 import { isSupabaseConfigured, db, SUPABASE_SETUP_SQL } from './lib/supabase';
+import { isSha256, hashPassword } from './lib/crypto';
 
 const STORAGE_KEYS = {
   PRINTERS: 'printcare_printers_v1',
@@ -33,10 +34,10 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_PASSWORDS: Record<string, string> = {
-  'sullypatrick01@gmail.com': 'admin',
-  'pierrerobertoleblanc1@gmail.com': 'admin',
-  'pierrerobertoleblanc10@gmail.com': 'admin',
-  'darlinelegrand8@gmail.com': 'admin'
+  'sullypatrick01@gmail.com': 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e',
+  'pierrerobertoleblanc1@gmail.com': 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e',
+  'pierrerobertoleblanc10@gmail.com': 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e',
+  'darlinelegrand8@gmail.com': 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e'
 };
 
 export default function App() {
@@ -67,6 +68,8 @@ export default function App() {
       setIsLoading(true);
       setSyncError(null);
 
+      let loadedTechs: Technician[] = [];
+
       if (isSupabaseConfigured) {
         try {
           // Attempt to fetch production data from real Supabase
@@ -75,30 +78,64 @@ export default function App() {
           const pNotes = await db.getNotes();
           const pReqs = await db.getChangeRequests();
           const pLogs = await db.getInterventionLogs();
-          const pPasswords = await db.getAdminPasswords();
 
           setPrinters(pPrinters);
           setTechnicians(pTechs);
           setNotes(pNotes);
           setChangeRequests(pReqs);
           setInterventionLogs(pLogs);
-          setRegisteredPasswords(prev => ({ ...prev, ...pPasswords }));
+          loadedTechs = pTechs;
+          
+          // Securely load only the local fallback passwords to keep offline functionality
+          await loadLocalData();
           setDbMode('supabase');
         } catch (err: any) {
           console.warn("Failed to load data from Supabase tables (falling back to offline LocalStorage mode):", err);
           // Set the error message (usually because tables aren't created yet)
           setSyncError(err.message || String(err));
           setDbMode('local');
-          loadLocalData();
+          loadedTechs = await loadLocalData();
         }
       } else {
         setDbMode('local');
-        loadLocalData();
+        loadedTechs = await loadLocalData();
       }
+
+      // Recover active user session and perform dynamic authorization check
+      const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
+      if (savedUser) {
+        try {
+          const user = JSON.parse(savedUser) as LoggedInUser;
+          if (user.role === 'admin' || user.role === 'super_admin') {
+            const isRecognized =
+              user.email === 'sullypatrick01@gmail.com' ||
+              user.email === 'pierrerobertoleblanc1@gmail.com' ||
+              user.email === 'pierrerobertoleblanc10@gmail.com' ||
+              user.email === 'darlinelegrand8@gmail.com';
+            if (isRecognized) {
+              setActiveUser(user);
+            } else {
+              localStorage.removeItem(STORAGE_KEYS.USER);
+            }
+          } else if (user.role === 'technician') {
+            const exists = loadedTechs.some(t => t.code === user.technicianId);
+            if (exists) {
+              setActiveUser(user);
+            } else {
+              localStorage.removeItem(STORAGE_KEYS.USER);
+            }
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.USER);
+          }
+        } catch (e) {
+          localStorage.removeItem(STORAGE_KEYS.USER);
+        }
+      }
+
       setIsLoading(false);
     }
 
-    function loadLocalData() {
+    async function loadLocalData(): Promise<Technician[]> {
       // 1. Printers
       const savedPrinters = localStorage.getItem(STORAGE_KEYS.PRINTERS);
       if (savedPrinters) {
@@ -110,10 +147,9 @@ export default function App() {
 
       // 2. Technicians
       const savedTechs = localStorage.getItem(STORAGE_KEYS.TECHNICIANS);
-      if (savedTechs) {
-        setTechnicians(JSON.parse(savedTechs));
-      } else {
-        setTechnicians(INITIAL_TECHNICIANS);
+      const techsList = savedTechs ? JSON.parse(savedTechs) : INITIAL_TECHNICIANS;
+      setTechnicians(techsList);
+      if (!savedTechs) {
         localStorage.setItem(STORAGE_KEYS.TECHNICIANS, JSON.stringify(INITIAL_TECHNICIANS));
       }
 
@@ -144,20 +180,36 @@ export default function App() {
         localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(INITIAL_INTERVENTION_LOGS));
       }
 
-      // 6. Passwords
+      // 6. Passwords - Transparent Cryptographic Upgrade to SHA-256
       const savedPasswords = localStorage.getItem(STORAGE_KEYS.PASSWORDS);
+      let parsedPasswords: Record<string, string> = {};
       if (savedPasswords) {
-        setRegisteredPasswords({ ...DEFAULT_PASSWORDS, ...JSON.parse(savedPasswords) });
-      } else {
-        setRegisteredPasswords(DEFAULT_PASSWORDS);
-        localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(DEFAULT_PASSWORDS));
+        try {
+          parsedPasswords = JSON.parse(savedPasswords);
+        } catch (e) {
+          parsedPasswords = {};
+        }
       }
-    }
 
-    // Recover active user session
-    const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
-    if (savedUser) {
-      setActiveUser(JSON.parse(savedUser));
+      const merged = { ...DEFAULT_PASSWORDS, ...parsedPasswords };
+      const migrated: Record<string, string> = {};
+      let hasMigrationChanged = false;
+
+      for (const [email, pass] of Object.entries(merged)) {
+        if (isSha256(pass)) {
+          migrated[email] = pass;
+        } else {
+          migrated[email] = await hashPassword(pass);
+          hasMigrationChanged = true;
+        }
+      }
+
+      setRegisteredPasswords(migrated);
+      if (hasMigrationChanged || !savedPasswords) {
+        localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(migrated));
+      }
+
+      return techsList;
     }
 
     loadData();
@@ -200,8 +252,51 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEYS.USER);
   };
 
-  const handleRegisterPassword = async (email: string, pass: string) => {
-    const updated = { ...registeredPasswords, [email.trim().toLowerCase()]: pass };
+  // Check if password setup has already been completed for this email
+  const handleCheckPasswordSetup = async (email: string): Promise<boolean> => {
+    const cleanedEmail = email.trim().toLowerCase();
+    
+    // In Supabase mode, check the database first
+    if (dbMode === 'supabase') {
+      try {
+        const remoteHash = await db.getAdminPassword(cleanedEmail);
+        if (remoteHash !== null) {
+          // If the user password is in the database, it is already set up
+          return true;
+        }
+      } catch (err) {
+        console.warn("Error checking password setup in Supabase, checking local:", err);
+      }
+    }
+    
+    // Fallback/Local mode: check if we have a password in state or LocalStorage
+    return registeredPasswords[cleanedEmail] !== undefined;
+  };
+
+  // Securely verify admin credentials without ever pulling the passwords list
+  const handleVerifyPassword = async (email: string, pass: string): Promise<boolean> => {
+    const cleanedEmail = email.trim().toLowerCase();
+    const enteredHash = await hashPassword(pass);
+    
+    // In Supabase mode, verify with DB
+    if (dbMode === 'supabase') {
+      try {
+        const remoteHash = await db.getAdminPassword(cleanedEmail);
+        if (remoteHash !== null) {
+          return enteredHash === remoteHash;
+        }
+      } catch (err) {
+        console.warn("Error verifying password with Supabase, verifying with local state:", err);
+      }
+    }
+    
+    // Fallback/Local mode verification
+    const localHash = registeredPasswords[cleanedEmail];
+    return localHash !== undefined && enteredHash === localHash;
+  };
+
+  const handleRegisterPassword = async (email: string, hashedPass: string) => {
+    const updated = { ...registeredPasswords, [email.trim().toLowerCase()]: hashedPass };
     setRegisteredPasswords(updated);
     localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(updated));
 
@@ -210,7 +305,7 @@ export default function App() {
         const isSuper = email.trim().toLowerCase() === 'pierrerobertoleblanc10@gmail.com' || 
                         email.trim().toLowerCase() === 'pierrerobertoleblanc1@gmail.com' ||
                         email.trim().toLowerCase() === 'darlinelegrand8@gmail.com';
-        await db.registerAdminUser(email, pass, isSuper ? 'super_admin' : 'admin');
+        await db.registerAdminUser(email, hashedPass, isSuper ? 'super_admin' : 'admin');
       } catch (err: any) {
         console.warn("Supabase background sync notice (register admin): using local storage fallback", err);
         setSyncWarning("Échec d'enregistrement en ligne : " + (err.message || String(err)) + ". Vos accès ont bien été configurés localement sur cet appareil.");
@@ -467,17 +562,15 @@ export default function App() {
 
   // Reset demo storage to default seed values
   const handleResetDemoData = () => {
-    if (confirm("Réinitialiser toutes les données de l'application aux valeurs de démo initiales ?")) {
-      saveAndSetPrinters(INITIAL_PRINTERS);
-      saveAndSetTechnicians(INITIAL_TECHNICIANS);
-      saveAndSetNotes(INITIAL_NOTES);
-      saveAndSetRequests(INITIAL_CHANGE_REQUESTS);
-      saveAndSetLogs(INITIAL_INTERVENTION_LOGS);
-      const defaultPass = {};
-      setRegisteredPasswords(defaultPass);
-      localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(defaultPass));
-      handleLogout();
-    }
+    saveAndSetPrinters(INITIAL_PRINTERS);
+    saveAndSetTechnicians(INITIAL_TECHNICIANS);
+    saveAndSetNotes(INITIAL_NOTES);
+    saveAndSetRequests(INITIAL_CHANGE_REQUESTS);
+    saveAndSetLogs(INITIAL_INTERVENTION_LOGS);
+    const defaultPass = {};
+    setRegisteredPasswords(defaultPass);
+    localStorage.setItem(STORAGE_KEYS.PASSWORDS, JSON.stringify(defaultPass));
+    handleLogout();
   };
 
   // Copy SQL script to clipboard helper
@@ -562,7 +655,8 @@ export default function App() {
           <LoginScreen
             onLogin={handleLogin}
             technicians={technicians.length > 0 ? technicians : INITIAL_TECHNICIANS}
-            registeredPasswords={registeredPasswords}
+            onVerifyPassword={handleVerifyPassword}
+            onCheckPasswordSetup={handleCheckPasswordSetup}
             onRegisterPassword={handleRegisterPassword}
           />
         ) : activeUser.role === 'admin' || activeUser.role === 'super_admin' ? (
@@ -575,9 +669,17 @@ export default function App() {
             notes={notes}
             onLogout={handleLogout}
             onAddPrinter={handleAddPrinter}
-            onUpdatePrinter={(updated) => {
+            onUpdatePrinter={async (updated) => {
               const next = printers.map(p => p.id === updated.id ? updated : p);
               saveAndSetPrinters(next);
+              if (dbMode === 'supabase') {
+                try {
+                  await db.updatePrinter(updated);
+                } catch (err: any) {
+                  console.warn("Supabase background sync notice (update printer): using local storage fallback", err);
+                  setSyncWarning("Échec de synchronisation (Mise à jour Imprimante) : " + (err.message || String(err)));
+                }
+              }
             }}
             onDeletePrinter={handleDeletePrinter}
             onAddTechnician={handleAddTechnician}

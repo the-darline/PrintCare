@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS printers (
   ink_black INTEGER NOT NULL DEFAULT 100,
   status TEXT NOT NULL DEFAULT 'actif',
   last_service_date TEXT NOT NULL,
-  qr_code_url TEXT NOT NULL
+  qr_code_url TEXT NOT NULL,
+  admin_notes TEXT DEFAULT ''
 );
 
 -- 2. Table technicians
@@ -99,12 +100,12 @@ ALTER TABLE change_requests DISABLE ROW LEVEL SECURITY;
 ALTER TABLE intervention_logs DISABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users DISABLE ROW LEVEL SECURITY;
 
--- Insertion des administrateurs par défaut (pour éviter d'avoir à configurer un mot de passe à la première connexion)
+-- Insertion des administrateurs par défaut (stockage sécurisé sous forme de hash SHA-256 du mot de passe)
 INSERT INTO admin_users (email, password, role) VALUES
-  ('sullypatrick01@gmail.com', 'admin', 'admin'),
-  ('pierrerobertoleblanc1@gmail.com', 'admin', 'super_admin'),
-  ('pierrerobertoleblanc10@gmail.com', 'admin', 'super_admin'),
-  ('darlinelegrand8@gmail.com', 'admin', 'super_admin')
+  ('sullypatrick01@gmail.com', 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e', 'admin'),
+  ('pierrerobertoleblanc1@gmail.com', 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e', 'super_admin'),
+  ('pierrerobertoleblanc10@gmail.com', 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e', 'super_admin'),
+  ('darlinelegrand8@gmail.com', 'eacb35e9d4c49083a689a263f1402e6227f664e043597ebf0ae9d7054519be4e', 'super_admin')
 ON CONFLICT (email) DO NOTHING;
 `;
 
@@ -235,16 +236,16 @@ export const db = {
     if (error) throw error;
   },
 
-  // Admins Authentication / Password Management
-  async getAdminPasswords(): Promise<Record<string, string>> {
+  // Admins Authentication / Password Management (Single secure hash retrieval to prevent mass data exposure)
+  async getAdminPassword(email: string): Promise<string | null> {
     if (!supabase) throw new Error('Supabase is not configured');
-    const { data, error } = await supabase.from('admin_users').select('email, password');
+    const { data, error } = await supabase
+      .from('admin_users')
+      .select('password')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle();
     if (error) throw error;
-    const records: Record<string, string> = {};
-    data?.forEach(row => {
-      records[row.email.trim().toLowerCase()] = row.password;
-    });
-    return records;
+    return data ? data.password : null;
   },
 
   async registerAdminUser(email: string, password: string, role: string = 'admin'): Promise<void> {

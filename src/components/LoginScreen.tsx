@@ -2,18 +2,21 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Printer, Shield, Key, Mail, ArrowRight, CheckCircle2, Lock, Eye, EyeOff, User } from 'lucide-react';
 import { LoggedInUser, Technician } from '../types';
+import { hashPassword } from '../lib/crypto';
 
 interface LoginScreenProps {
   onLogin: (user: LoggedInUser) => void;
   technicians: Technician[];
-  registeredPasswords: Record<string, string>;
-  onRegisterPassword: (email: string, pass: string) => void;
+  onVerifyPassword: (email: string, pass: string) => Promise<boolean>;
+  onCheckPasswordSetup: (email: string) => Promise<boolean>;
+  onRegisterPassword: (email: string, hashedPass: string) => void;
 }
 
 export default function LoginScreen({
   onLogin,
   technicians,
-  registeredPasswords,
+  onVerifyPassword,
+  onCheckPasswordSetup,
   onRegisterPassword,
 }: LoginScreenProps) {
   const [activeTab, setActiveTab] = useState<'admin' | 'tech'>('admin');
@@ -22,6 +25,25 @@ export default function LoginScreen({
   const [techCode, setTechCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isEmailSetup, setIsEmailSetup] = useState<boolean | null>(null);
+
+  // Detect whether the email already has a configured password
+  React.useEffect(() => {
+    const trimmed = email.trim().toLowerCase();
+    const isRecognized =
+      trimmed === 'sullypatrick01@gmail.com' ||
+      trimmed === 'pierrerobertoleblanc1@gmail.com' ||
+      trimmed === 'pierrerobertoleblanc10@gmail.com' ||
+      trimmed === 'darlinelegrand8@gmail.com';
+
+    if (isRecognized) {
+      onCheckPasswordSetup(trimmed).then(setup => {
+        setIsEmailSetup(setup);
+      });
+    } else {
+      setIsEmailSetup(null);
+    }
+  }, [email, onCheckPasswordSetup]);
 
   // Password Setup Simulation State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -40,11 +62,13 @@ export default function LoginScreen({
       const emailLower = emailParam.toLowerCase();
       setModalEmail(emailLower);
       if (passwordParam) {
-        // Enregistre le mot de passe défini par l'utilisateur lors de la première connexion
-        onRegisterPassword(emailLower, passwordParam);
-        setNewPassword(passwordParam);
-        setConfirmPassword(passwordParam);
-        setSetupStep('success');
+        // Enregistre le mot de passe défini par l'utilisateur lors de la première connexion (sous forme de hash)
+        hashPassword(passwordParam).then(hashed => {
+          onRegisterPassword(emailLower, hashed);
+          setNewPassword(passwordParam);
+          setConfirmPassword(passwordParam);
+          setSetupStep('success');
+        });
       } else {
         setNewPassword('');
         setConfirmPassword('');
@@ -56,7 +80,7 @@ export default function LoginScreen({
     }
   }, []);
 
-  const handleAdminSubmit = (e: React.FormEvent) => {
+  const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -77,10 +101,11 @@ export default function LoginScreen({
       return;
     }
 
-    const savedPass = registeredPasswords[formattedEmail];
+    // Check password setup asynchronously
+    const isSetup = await onCheckPasswordSetup(formattedEmail);
     
     // Si l'administrateur n'a pas encore de mot de passe configuré (première connexion)
-    if (savedPass === undefined) {
+    if (!isSetup) {
       if (newPassword === '') {
         setError("Veuillez définir un mot de passe pour votre première connexion.");
         return;
@@ -105,7 +130,8 @@ export default function LoginScreen({
       return;
     }
 
-    if (password !== savedPass) {
+    const isValid = await onVerifyPassword(formattedEmail, password);
+    if (!isValid) {
       setError("Mot de passe incorrect. Veuillez réessayer.");
       return;
     }
@@ -186,7 +212,7 @@ export default function LoginScreen({
     }
   };
 
-  const handlePasswordSetupSubmit = (e: React.FormEvent) => {
+  const handlePasswordSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -200,7 +226,8 @@ export default function LoginScreen({
       return;
     }
 
-    onRegisterPassword(modalEmail.toLowerCase(), newPassword);
+    const hashed = await hashPassword(newPassword);
+    onRegisterPassword(modalEmail.toLowerCase(), hashed);
     setSetupStep('success');
   };
 
@@ -309,7 +336,7 @@ export default function LoginScreen({
                 </div>
               </div>
 
-              {registeredPasswords[email.trim().toLowerCase()] !== undefined && (
+              {isEmailSetup === true && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -346,7 +373,7 @@ export default function LoginScreen({
                 email.trim().toLowerCase() === 'pierrerobertoleblanc1@gmail.com' ||
                 email.trim().toLowerCase() === 'pierrerobertoleblanc10@gmail.com' ||
                 email.trim().toLowerCase() === 'darlinelegrand8@gmail.com') && 
-               registeredPasswords[email.trim().toLowerCase()] === undefined && (
+               isEmailSetup === false && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -408,7 +435,7 @@ export default function LoginScreen({
                 className="w-full mt-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md shadow-indigo-600/10 flex items-center justify-center gap-2 cursor-pointer group transition-all duration-200 active:scale-[0.98]"
                 id="btn-admin-submit"
               >
-                {registeredPasswords[email.trim().toLowerCase()] !== undefined 
+                {isEmailSetup === true 
                   ? 'Se connecter' 
                   : 'Initialiser mon accès & Envoyer l\'E-mail'}
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
