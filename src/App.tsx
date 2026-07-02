@@ -764,6 +764,7 @@ export default function App() {
             onVerifyPassword={handleVerifyPassword}
             onCheckPasswordSetup={handleCheckPasswordSetup}
             onRegisterPassword={handleRegisterPassword}
+            dbMode={dbMode}
           />
         ) : activeUser.role === 'admin' || activeUser.role === 'super_admin' ? (
           <AdminDashboard
