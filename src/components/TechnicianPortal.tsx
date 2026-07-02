@@ -29,6 +29,7 @@ import {
 } from '../types';
 import { DEFAULT_CHECKLIST_ITEMS } from '../data';
 import { decodeSecureQR } from '../lib/supabase';
+import jsQR from 'jsqr';
 
 
 interface TechnicianPortalProps {
@@ -83,23 +84,60 @@ export default function TechnicianPortal({
   const [isDecoding, setIsDecoding] = useState(false);
   const [decodingMessage, setDecodingMessage] = useState('');
 
-  const handleVerifySecureQR = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleScannedValue = (scannedValue: string) => {
+    stopCamera();
     setQrValidationError('');
-    const trimmedInput = manualQRInput.trim();
-    if (!trimmedInput) {
-      setQrValidationError("Veuillez saisir le contenu du QR Code.");
-      return;
-    }
-
     setIsDecoding(true);
     setDecodingMessage("Analyse cryptographique du jeton...");
 
     setTimeout(() => {
-      const decodedId = decodeSecureQR(trimmedInput);
+      // 1. Try decoding as secure QR
+      let decodedId = decodeSecureQR(scannedValue);
+
+      // 2. Fallback: if it's directly a valid printer ID
+      if (!decodedId) {
+        const matched = printers.find(p => p.id === scannedValue || p.id.toLowerCase() === scannedValue.toLowerCase());
+        if (matched) {
+          decodedId = matched.id;
+        }
+      }
+
+      // 3. Fallback: if it's a URL
+      if (!decodedId) {
+        try {
+          if (scannedValue.startsWith('http://') || scannedValue.startsWith('https://')) {
+            const urlObj = new URL(scannedValue);
+            const codeParam = urlObj.searchParams.get('code') || urlObj.searchParams.get('id') || urlObj.searchParams.get('qr');
+            if (codeParam) {
+              const decodedParam = decodeSecureQR(codeParam);
+              if (decodedParam && printers.some(p => p.id === decodedParam)) {
+                decodedId = decodedParam;
+              } else if (printers.some(p => p.id === codeParam)) {
+                decodedId = codeParam;
+              }
+            }
+
+            if (!decodedId) {
+              const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+              if (pathSegments.length > 0) {
+                const lastSegment = pathSegments[pathSegments.length - 1];
+                const decodedSegment = decodeSecureQR(lastSegment);
+                if (decodedSegment && printers.some(p => p.id === decodedSegment)) {
+                  decodedId = decodedSegment;
+                } else if (printers.some(p => p.id === lastSegment)) {
+                  decodedId = lastSegment;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore URL issues
+        }
+      }
+
       if (!decodedId) {
         setIsDecoding(false);
-        setQrValidationError("❌ ÉCHEC : QR Code non sécurisé ! Seule l'application PrintCare est autorisée à déchiffrer ce QR Code. Les scanners génériques externes sont rejetés.");
+        setQrValidationError(`❌ ÉCHEC : QR Code non reconnu ("${scannedValue.length > 30 ? scannedValue.substring(0, 30) + '...' : scannedValue}"). Seuls les QR codes sécurisés PrintCare ou les identifiants d'imprimantes sont acceptés.`);
         return;
       }
 
@@ -109,7 +147,7 @@ export default function TechnicianPortal({
         const matchedPrinter = printers.find(p => p.id === decodedId);
         if (!matchedPrinter) {
           setIsDecoding(false);
-          setQrValidationError(`❌ Code sécurisé déchiffré valide, mais l'imprimante "${decodedId}" n'existe pas dans le système.`);
+          setQrValidationError(`❌ Code valide déchiffré, mais l'imprimante "${decodedId}" n'existe pas dans le système.`);
           return;
         }
 
@@ -120,12 +158,81 @@ export default function TechnicianPortal({
     }, 700);
   };
 
+  const handleVerifySecureQR = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedInput = manualQRInput.trim();
+    if (!trimmedInput) {
+      setQrValidationError("Veuillez saisir le contenu du QR Code.");
+      return;
+    }
+    handleScannedValue(trimmedInput);
+  };
+
   // Stop camera when component unmounts or active screen changes
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, [activeScreen]);
+
+  // Real-time camera processing loop with jsQR
+  useEffect(() => {
+    let animationFrameId: number;
+    let isMounted = true;
+
+    const processFrame = () => {
+      if (!isCameraActive || !videoRef.current || !isMounted) return;
+
+      const video = videoRef.current;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          
+          try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+
+            if (code && code.data) {
+              const scannedValue = code.data.trim();
+              if (scannedValue) {
+                handleScannedValue(scannedValue);
+                return; // Stop the video processing loop
+              }
+            }
+          } catch (err) {
+            console.error("Error decoding QR code:", err);
+          }
+        }
+      }
+
+      if (isCameraActive && isMounted) {
+        animationFrameId = requestAnimationFrame(processFrame);
+      }
+    };
+
+    if (isCameraActive) {
+      const timer = setTimeout(() => {
+        animationFrameId = requestAnimationFrame(processFrame);
+      }, 500);
+      return () => {
+        clearTimeout(timer);
+        cancelAnimationFrame(animationFrameId);
+      };
+    }
+
+    return () => {
+      isMounted = false;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isCameraActive, printers]);
 
   const startCamera = async () => {
     setIsCameraActive(true);
@@ -140,7 +247,7 @@ export default function TechnicianPortal({
     } catch (err: any) {
       console.warn("Camera not accessible:", err);
       setCameraError(
-        "L'accès caméra n'a pas pu être établi (permissions ou indisponibilité). Utilisez le simulateur de QR code ci-dessous pour tester !"
+        "L'accès caméra n'a pas pu être établi (permissions ou indisponibilité). Saisissez le code QR manuellement ou assurez-vous d'autoriser l'accès caméra de votre navigateur."
       );
       setIsCameraActive(false);
     }
@@ -763,6 +870,10 @@ export default function TechnicianPortal({
             </form>
           </div>
         )}
+        {/* Footer / Pied de page */}
+        <footer className="mt-12 pt-6 border-t border-slate-200 text-center text-[11px] text-slate-400 font-semibold pb-4">
+          Développé par PRL ,Licence d'exploitation : Ign. Patrick S.
+        </footer>
       </main>
     </div>
   );

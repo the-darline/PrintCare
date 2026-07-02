@@ -1226,6 +1226,11 @@ export default function AdminDashboard({
             </div>
           </div>
         )}
+
+        {/* Footer / Pied de page */}
+        <footer className="mt-12 pt-6 border-t border-slate-200 text-center text-[11px] text-slate-400 font-semibold">
+          Développé par PRL ,Licence d'exploitation : Ign. Patrick S.
+        </footer>
       </div>
 
       {/* MODAL ADD PRINTER */}

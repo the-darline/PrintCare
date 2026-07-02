@@ -475,49 +475,14 @@ export default function LoginScreen({
             </form>
           )}
 
-          {/* Diagnostic de Connexion Supabase */}
-          <div className="mt-6 pt-5 border-t border-slate-100" id="supabase-diagnostics-card">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Base de données</span>
-              {dbMode === 'supabase' ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Supabase Connecté
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-150 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  Mode Local (Hors-ligne)
-                </span>
-              )}
-            </div>
 
-            {dbMode === 'local' ? (
-              <div className="p-3 bg-amber-50/80 border border-amber-100 rounded-xl text-slate-700 leading-normal text-[11px] space-y-1.5">
-                <p className="font-bold text-amber-900 flex items-center gap-1">
-                  💡 Pourquoi "Mode Local" ?
-                </p>
-                <p className="text-slate-600 font-medium">
-                  Les données de cet appareil ne sont pas synchronisées en ligne avec Supabase car les clés d'environnement n'ont pas été chargées ou sont incorrectes.
-                </p>
-                <div className="text-[10px] text-amber-800 font-semibold space-y-1">
-                  <p className="font-bold text-rose-800">⚠️ IMPORTANT POUR VERCEL :</p>
-                  <p className="leading-relaxed">
-                    Vite injecte les variables <code className="bg-amber-100/60 px-1 rounded font-mono font-bold text-amber-950">VITE_SUPABASE_URL</code> et <code className="bg-amber-100/60 px-1 rounded font-mono font-bold text-amber-950">VITE_SUPABASE_ANON_KEY</code> au moment de la compilation (**build time**).
-                  </p>
-                  <p className="leading-relaxed">
-                    Si vous venez de configurer ces variables dans votre dashboard Vercel, **vous devez obligatoirement relancer un Déploiement ("Redeploy")** pour que l'application soit reconstruite avec vos clés intégrées.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="p-2.5 bg-emerald-50/40 border border-emerald-100/60 rounded-xl text-[10px] text-emerald-800 font-medium leading-relaxed">
-                ✅ **Synchronisation en ligne active** : Toutes les modifications et tous les techniciens ajoutés sont enregistrés instantanément sur Supabase et disponibles sur tous les appareils connectés à ce projet !
-              </div>
-            )}
-          </div>
         </div>
       </div>
+
+      {/* Footer / Pied de page */}
+      <footer className="mt-8 text-center text-[11px] text-slate-400 font-semibold z-10 pb-6">
+        Développé par PRL ,Licence d'exploitation : Ign. Patrick S.
+      </footer>
 
       {/* INTERACTIVE EMAIL SIMULATION MODAL */}
       <AnimatePresence>
